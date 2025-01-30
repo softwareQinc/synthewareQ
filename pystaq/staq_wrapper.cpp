@@ -112,6 +112,32 @@ class Program {
         staq::transformations::qasm_synth(*prog_, opt);
     }
 #endif /* GRID_SYNTH */
+    void optimize_level_0() {
+        desugar();
+    }
+    void optimize_level_1(bool no_correction = false,
+                          bool no_fixpoint = false) {
+        rotation_fold(no_correction);
+        simplify(no_fixpoint);
+    }
+    void optimize_level_2(bool no_correction = false, bool no_fixpoint = false,
+                          bool clear_decls = false, bool inline_stdlib = false,
+                          const std::string& ancilla_name = "anc") {
+        inline_prog(clear_decls, inline_stdlib, ancilla_name);
+        simplify(no_fixpoint);
+        rotation_fold(no_correction);
+        simplify(no_fixpoint);
+    }
+    void optimize_level_3(bool no_correction = false, bool no_fixpoint = false,
+                          bool clear_decls = false, bool inline_stdlib = false,
+                          const std::string& ancilla_name = "anc") {
+        inline_prog(clear_decls, inline_stdlib, ancilla_name);
+        simplify(no_fixpoint);
+        rotation_fold(no_correction);
+        simplify(no_fixpoint);
+        cnot_resynth();
+        simplify(no_fixpoint);
+    }
     // output (these methods return a string)
     std::string get_resources(bool box_gates = false, bool unbox_qelib = false,
                               bool no_merge_dagger = false) {
@@ -216,6 +242,32 @@ void qasm_synth(Program& prog, long int prec, int factor_effort, bool check,
 }
 #endif /* GRID_SYNTH */
 std::string lattice_surgery(Program& prog) { return prog.lattice_surgery(); }
+
+void compile(Program& prog, int optimization_level,
+             bool no_correction,
+             bool no_fixpoint,
+             bool clear_decls, bool inline_stdlib,
+             const std::string& ancilla_name) {
+        switch (optimization_level) {
+        case 0:
+                prog.optimize_level_0();
+                break;
+        case 1:
+                prog.optimize_level_1(no_correction, no_fixpoint);
+                break;
+        case 2:
+                prog.optimize_level_2(no_correction, no_fixpoint, clear_decls,
+                                      inline_stdlib, ancilla_name);
+                break;
+        case 3:
+                prog.optimize_level_3(no_correction, no_fixpoint, clear_decls,
+                                      inline_stdlib, ancilla_name);
+                break;
+        default:
+                throw std::invalid_argument("Invalid optimization level");
+                break;
+        }
+}
 
 static double FIDELITY_1 = staq::mapping::FIDELITY_1;
 
@@ -338,6 +390,11 @@ PYBIND11_MODULE(pystaq, m) {
     m.def("lattice_surgery", &lattice_surgery,
           "Compiles OpenQASM 2.0 to lattice surgery instruction set",
           py::arg("prog"));
+
+    m.def("compile", &compile, "compile", py::arg("prog"),
+          py::arg("optimization_level"), py::arg("no_correction") = false,
+          py::arg("no_fixpoint") = false, py::arg("clear_decls") = false,
+          py::arg("inline_stdlib") = false, py::arg("ancilla_name") = "anc");
 
     py::class_<Device>(m, "Device")
         .def(py::init<int>())
